@@ -105,6 +105,11 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ employee, onBack, onSav
         comments: evaluations[criterion.id]?.comments || ''
       }));
 
+      console.log('Submitting evaluation data:', {
+        employeeId: employee.id,
+        periodId: selectedPeriod,
+        evaluations: evaluationData
+      });
       await apiService.submitEvaluation({
         employeeId: employee.id,
         periodId: selectedPeriod,
@@ -114,7 +119,8 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ employee, onBack, onSav
       onSave();
     } catch (error) {
       console.error('Failed to submit evaluation:', error);
-      alert('Failed to submit evaluation. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Failed to submit evaluation: ${errorMessage}`);
     } finally {
       setSaving(false);
     }

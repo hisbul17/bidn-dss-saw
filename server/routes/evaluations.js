@@ -130,6 +130,11 @@ router.post('/submit', requireAuth, requireRole(['manager', 'supervisor', 'admin
     const { employeeId, periodId, evaluations } = req.body;
     const evaluatorId = req.session.user.id;
     
+    // Validate required fields
+    if (!employeeId || !periodId || !evaluations || !Array.isArray(evaluations)) {
+      return res.status(400).json({ error: 'Missing required fields: employeeId, periodId, and evaluations array' });
+    }
+
     // Verify department access for managers
     if (req.session.user.role === 'manager') {
       const [employee] = await pool.execute(
@@ -146,11 +151,11 @@ router.post('/submit', requireAuth, requireRole(['manager', 'supervisor', 'admin
       }
     }
     
-    // Start transaction
-    const connection = await pool.getConnection();
-    await connection.beginTransaction();
-    
     try {
+      // Start transaction
+      const connection = await pool.getConnection();
+      await connection.beginTransaction();
+      
       // Delete existing evaluations for this employee/period/evaluator
       await connection.execute(
         'DELETE FROM evaluations WHERE employee_id = ? AND period_id = ? AND evaluator_id = ?',
@@ -159,6 +164,10 @@ router.post('/submit', requireAuth, requireRole(['manager', 'supervisor', 'admin
       
       // Insert new evaluations
       for (const evaluation of evaluations) {
+        if (!evaluation.criteria_id || !evaluation.score) {
+          throw new Error('Invalid evaluation data: missing criteria_id or score');
+        }
+        
         await connection.execute(
           'INSERT INTO evaluations (employee_id, evaluator_id, period_id, criteria_id, score, comments) VALUES (?, ?, ?, ?, ?, ?)',
           [employeeId, evaluatorId, periodId, evaluation.criteria_id, evaluation.score, evaluation.comments || '']
@@ -169,16 +178,21 @@ router.post('/submit', requireAuth, requireRole(['manager', 'supervisor', 'admin
       await recalculateEmployeeScore(connection, employeeId, periodId);
       
       await connection.commit();
+      connection.release();
       res.json({ message: 'Evaluation submitted successfully' });
     } catch (error) {
-      await connection.rollback();
+      if (connection) {
+        await connection.rollback();
+        connection.release();
+      }
       throw error;
-    } finally {
-      connection.release();
     }
   } catch (error) {
     console.error('Submit evaluation error:', error);
-    res.status(500).json({ error: 'Failed to submit evaluation' });
+    res.status(500).json({ 
+      error: 'Failed to submit evaluation',
+      details: error.message 
+    });
   }
 });
 
@@ -222,91 +236,118 @@ router.post('/recalculate/:periodId', requireAuth, requireRole(['admin', 'superv
 
 // Helper function to recalculate employee score
 async function recalculateEmployeeScore(connection, employeeId, periodId) {
-  // Get all evaluations for this employee in this period
-  const [evaluations] = await connection.execute(`
-    SELECT e.score, c.weight
-    FROM evaluations e
-    JOIN criteria c ON e.criteria_id = c.id
-    WHERE e.employee_id = ? AND e.period_id = ?
-  `, [employeeId, periodId]);
-  
-  if (evaluations.length === 0) {
-    return;
+  try {
+    // Get all evaluations for this employee in this period
+    const [evaluations] = await connection.execute(`
+      SELECT e.score, c.weight
+      FROM evaluations e
+      JOIN criteria c ON e.criteria_id = c.id
+      WHERE e.employee_id = ? AND e.period_id = ? AND c.is_active = TRUE
+    `, [employeeId, periodId]);
+    
+    if (evaluations.length === 0) {
+      console.log(`No evaluations found for employee ${employeeId} in period ${periodId}`);
+      return;
+    }
+    
+    // Calculate weighted score using SAW method
+    let totalWeightedScore = 0;
+    let totalWeight = 0;
+    
+    for (const evaluation of evaluations) {
+      const score = parseFloat(evaluation.score);
+      const weight = parseFloat(evaluation.weight);
+      
+      if (isNaN(score) || isNaN(weight)) {
+        console.error(`Invalid score or weight: score=${evaluation.score}, weight=${evaluation.weight}`);
+        continue;
+      }
+      
+      totalWeightedScore += score * weight;
+      totalWeight += weight;
+    }
+    
+    const weightedScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
+    const totalScore = evaluations.reduce((sum, e) => sum + parseFloat(e.score), 0);
+    
+    console.log(`Calculated scores for employee ${employeeId}: total=${totalScore}, weighted=${weightedScore}`);
+    
+    // Insert or update employee score
+    await connection.execute(`
+      INSERT INTO employee_scores (employee_id, period_id, total_score, weighted_score)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+      total_score = VALUES(total_score),
+      weighted_score = VALUES(weighted_score),
+      calculated_at = CURRENT_TIMESTAMP
+    `, [employeeId, periodId, totalScore, weightedScore]);
+    
+  } catch (error) {
+    console.error('Error in recalculateEmployeeScore:', error);
+    throw error;
   }
-  
-  // Calculate weighted score using SAW method
-  let totalWeightedScore = 0;
-  let totalWeight = 0;
-  
-  for (const evaluation of evaluations) {
-    totalWeightedScore += evaluation.score * evaluation.weight;
-    totalWeight += evaluation.weight;
-  }
-  
-  const weightedScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
-  const totalScore = evaluations.reduce((sum, e) => sum + e.score, 0);
-  
-  // Insert or update employee score
-  await connection.execute(`
-    INSERT INTO employee_scores (employee_id, period_id, total_score, weighted_score)
-    VALUES (?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE
-    total_score = VALUES(total_score),
-    weighted_score = VALUES(weighted_score),
-    calculated_at = CURRENT_TIMESTAMP
-  `, [employeeId, periodId, totalScore, weightedScore]);
 }
 
 // Helper function to update rankings
 async function updateRankings(connection, periodId) {
-  // Update overall rankings
-  await connection.execute(`
-    UPDATE employee_scores es1
-    SET rank_overall = (
-      SELECT COUNT(*) + 1
-      FROM employee_scores es2
-      WHERE es2.period_id = es1.period_id
-      AND es2.weighted_score > es1.weighted_score
-    )
-    WHERE es1.period_id = ?
-  `, [periodId]);
-  
-  // Update department rankings
-  await connection.execute(`
-    UPDATE employee_scores es1
-    JOIN employees e1 ON es1.employee_id = e1.id
-    SET es1.rank_in_department = (
-      SELECT COUNT(*) + 1
-      FROM employee_scores es2
-      JOIN employees e2 ON es2.employee_id = e2.id
-      WHERE es2.period_id = es1.period_id
-      AND e2.department_id = e1.department_id
-      AND es2.weighted_score > es1.weighted_score
-    )
-    WHERE es1.period_id = ?
-  `, [periodId]);
-  
-  // Mark best performers
-  await connection.execute(`
-    UPDATE employee_scores
-    SET is_best_overall = FALSE, is_best_in_department = FALSE
-    WHERE period_id = ?
-  `, [periodId]);
-  
-  // Mark best overall
-  await connection.execute(`
-    UPDATE employee_scores
-    SET is_best_overall = TRUE
-    WHERE period_id = ? AND rank_overall = 1
-  `, [periodId]);
-  
-  // Mark best in each department
-  await connection.execute(`
-    UPDATE employee_scores es
-    JOIN employees e ON es.employee_id = e.id
-    SET es.is_best_in_department = TRUE
-    WHERE es.period_id = ? AND es.rank_in_department = 1
-  `, [periodId]);
+  try {
+    console.log(`Updating rankings for period ${periodId}`);
+    
+    // Update overall rankings
+    await connection.execute(`
+      UPDATE employee_scores es1
+      SET rank_overall = (
+        SELECT COUNT(*) + 1
+        FROM employee_scores es2
+        WHERE es2.period_id = es1.period_id
+        AND es2.weighted_score > es1.weighted_score
+      )
+      WHERE es1.period_id = ?
+    `, [periodId]);
+    
+    // Update department rankings
+    await connection.execute(`
+      UPDATE employee_scores es1
+      JOIN employees e1 ON es1.employee_id = e1.id
+      SET es1.rank_in_department = (
+        SELECT COUNT(*) + 1
+        FROM employee_scores es2
+        JOIN employees e2 ON es2.employee_id = e2.id
+        WHERE es2.period_id = es1.period_id
+        AND e2.department_id = e1.department_id
+        AND es2.weighted_score > es1.weighted_score
+      )
+      WHERE es1.period_id = ?
+    `, [periodId]);
+    
+    // Reset best performer flags
+    await connection.execute(`
+      UPDATE employee_scores
+      SET is_best_overall = FALSE, is_best_in_department = FALSE
+      WHERE period_id = ?
+    `, [periodId]);
+    
+    // Mark best overall performer
+    await connection.execute(`
+      UPDATE employee_scores
+      SET is_best_overall = TRUE
+      WHERE period_id = ? AND rank_overall = 1
+    `, [periodId]);
+    
+    // Mark best performers in each department
+    await connection.execute(`
+      UPDATE employee_scores es
+      JOIN employees e ON es.employee_id = e.id
+      SET es.is_best_in_department = TRUE
+      WHERE es.period_id = ? AND es.rank_in_department = 1
+    `, [periodId]);
+    
+    console.log(`Rankings updated successfully for period ${periodId}`);
+    
+  } catch (error) {
+    console.error('Error in updateRankings:', error);
+    throw error;
+  }
 }
 
 export default router;
