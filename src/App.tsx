@@ -6,6 +6,7 @@ import Sidebar from './components/Layout/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
 import Employees from './components/Employees/Employees';
 import Evaluations from './components/Evaluations/Evaluations';
+import CriteriaManagement from './components/Criteria/CriteriaManagement';
 import Reports from './components/Reports/Reports';
 
 const AppContent: React.FC = () => {
@@ -32,6 +33,8 @@ const AppContent: React.FC = () => {
         return <Employees />;
       case 'evaluations':
         return <Evaluations />;
+      case 'criteria':
+        return <CriteriaManagement />;
       case 'reports':
         return <Reports />;
       default:

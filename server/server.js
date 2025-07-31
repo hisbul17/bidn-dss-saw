@@ -6,6 +6,7 @@ import { connectDB } from './config/database.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
+import departmentRoutes from './routes/departments.js';
 import dashboardRoutes from './routes/dashboard.js';
 import employeeRoutes from './routes/employees.js';
 import evaluationRoutes from './routes/evaluations.js';
@@ -39,6 +40,7 @@ app.use(session({
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/departments', departmentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/evaluations', evaluationRoutes);

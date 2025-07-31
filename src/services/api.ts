@@ -60,9 +60,54 @@ class ApiService {
     return this.request(`/employees/${id}`);
   }
 
+  async createEmployee(data: any) {
+    return this.request('/employees', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateEmployee(id: number, data: any) {
+    return this.request(`/employees/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteEmployee(id: number) {
+    return this.request(`/employees/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Department endpoints
+  async getDepartments() {
+    return this.request('/departments');
+  }
+
   // Evaluation endpoints
   async getCriteria() {
     return this.request('/evaluations/criteria');
+  }
+
+  async createCriteria(data: any) {
+    return this.request('/evaluations/criteria', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCriteria(id: number, data: any) {
+    return this.request(`/evaluations/criteria/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCriteria(id: number) {
+    return this.request(`/evaluations/criteria/${id}`, {
+      method: 'DELETE',
+    });
   }
 
   async getEvaluationPeriods() {

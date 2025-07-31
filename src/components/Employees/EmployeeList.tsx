@@ -1,16 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Award, TrendingUp, Eye } from 'lucide-react';
+import { Users, Search, Award, TrendingUp, Eye, Plus, Edit, Trash2, Filter } from 'lucide-react';
 import { Employee } from '../../types';
 import { apiService } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface EmployeeListProps {
   onSelectEmployee: (employee: Employee) => void;
+  onAddEmployee?: () => void;
+  onEditEmployee?: (employee: Employee) => void;
+  onDeleteEmployee?: (employee: Employee) => void;
 }
 
-const EmployeeList: React.FC<EmployeeListProps> = ({ onSelectEmployee }) => {
+const EmployeeList: React.FC<EmployeeListProps> = ({ 
+  onSelectEmployee, 
+  onAddEmployee, 
+  onEditEmployee, 
+  onDeleteEmployee 
+}) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'score' | 'rank'>('name');
+  const { user } = useAuth();
 
   useEffect(() => {
     loadEmployees();
@@ -32,7 +44,22 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelectEmployee }) => {
     employee.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     employee.employee_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
     employee.department_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  ).filter(employee => 
+    !filterDepartment || employee.department_name === filterDepartment
+  ).sort((a, b) => {
+    switch (sortBy) {
+      case 'score':
+        return (b.weighted_score || 0) - (a.weighted_score || 0);
+      case 'rank':
+        return (a.rank_overall || 999) - (b.rank_overall || 999);
+      default:
+        return a.full_name.localeCompare(b.full_name);
+    }
+  });
+
+  const departments = [...new Set(employees.map(emp => emp.department_name))];
+
+  const canManageEmployees = ['admin', 'supervisor'].includes(user?.role || '');
 
   const getRankBadge = (rank?: number) => {
     if (!rank) return null;
@@ -77,17 +104,51 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelectEmployee }) => {
             <Users className="h-5 w-5 mr-2 text-blue-600" />
             Employees ({filteredEmployees.length})
           </h2>
+          {canManageEmployees && onAddEmployee && (
+            <button
+              onClick={onAddEmployee}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Employee</span>
+            </button>
+          )}
         </div>
         
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search employees..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search employees..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            <select
+              value={filterDepartment}
+              onChange={(e) => setFilterDepartment(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Departments</option>
+              {departments.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+            
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'name' | 'score' | 'rank')}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="score">Sort by Score</option>
+              <option value="rank">Sort by Rank</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -140,9 +201,44 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelectEmployee }) => {
                     </div>
                   )}
                   
-                  <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200">
+                  <div className="flex items-center space-x-2">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectEmployee(employee);
+                      }}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                      title="View Details"
+                    >
                     <Eye className="h-4 w-4" />
-                  </button>
+                    </button>
+                    
+                    {canManageEmployees && onEditEmployee && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditEmployee(employee);
+                        }}
+                        className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors duration-200"
+                        title="Edit Employee"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                    )}
+                    
+                    {canManageEmployees && onDeleteEmployee && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteEmployee(employee);
+                        }}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                        title="Delete Employee"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

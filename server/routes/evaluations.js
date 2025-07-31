@@ -8,12 +8,82 @@ const router = express.Router();
 router.get('/criteria', requireAuth, async (req, res) => {
   try {
     const [criteria] = await pool.execute(
-      'SELECT * FROM criteria WHERE is_active = TRUE ORDER BY name'
+      'SELECT * FROM criteria ORDER BY category, name'
     );
     res.json(criteria);
   } catch (error) {
     console.error('Get criteria error:', error);
     res.status(500).json({ error: 'Failed to fetch criteria' });
+  }
+});
+
+// Create new criteria
+router.post('/criteria', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  try {
+    const { name, description, weight, category, is_active } = req.body;
+    
+    const [result] = await pool.execute(
+      'INSERT INTO criteria (name, description, weight, category, is_active) VALUES (?, ?, ?, ?, ?)',
+      [name, description, weight, category || 'Other', is_active !== false]
+    );
+    
+    res.json({ message: 'Criteria created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create criteria error:', error);
+    res.status(500).json({ error: 'Failed to create criteria' });
+  }
+});
+
+// Update criteria
+router.put('/criteria/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, weight, category, is_active } = req.body;
+    
+    const [result] = await pool.execute(
+      'UPDATE criteria SET name = ?, description = ?, weight = ?, category = ?, is_active = ? WHERE id = ?',
+      [name, description, weight, category || 'Other', is_active !== false, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Criteria not found' });
+    }
+    
+    res.json({ message: 'Criteria updated successfully' });
+  } catch (error) {
+    console.error('Update criteria error:', error);
+    res.status(500).json({ error: 'Failed to update criteria' });
+  }
+});
+
+// Delete criteria
+router.delete('/criteria/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if criteria is used in evaluations
+    const [evaluations] = await pool.execute(
+      'SELECT COUNT(*) as count FROM evaluations WHERE criteria_id = ?',
+      [id]
+    );
+    
+    if (evaluations[0].count > 0) {
+      return res.status(400).json({ error: 'Cannot delete criteria that is used in evaluations' });
+    }
+    
+    const [result] = await pool.execute(
+      'DELETE FROM criteria WHERE id = ?',
+      [id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Criteria not found' });
+    }
+    
+    res.json({ message: 'Criteria deleted successfully' });
+  } catch (error) {
+    console.error('Delete criteria error:', error);
+    res.status(500).json({ error: 'Failed to delete criteria' });
   }
 });
 

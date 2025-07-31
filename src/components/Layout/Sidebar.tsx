@@ -38,6 +38,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
       roles: ['admin', 'manager', 'supervisor']
     },
     {
+      id: 'criteria',
+      label: 'Criteria',
+      icon: Settings,
+      roles: ['admin', 'supervisor']
+    },
+    {
       id: 'reports',
       label: 'Reports',
       icon: FileText,

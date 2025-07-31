@@ -35,6 +35,9 @@ export interface Criteria {
   description?: string;
   weight: number;
   is_active: boolean;
+  category?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface EvaluationPeriod {
@@ -76,6 +79,25 @@ export interface DashboardStats {
   activePeriods: number;
   completedEvaluations: number;
   totalDepartments: number;
+}
+
+export interface CriteriaFormData {
+  name: string;
+  description: string;
+  weight: number;
+  category: string;
+  is_active: boolean;
+}
+
+export interface EmployeeFormData {
+  employee_code: string;
+  full_name: string;
+  department_id: number;
+  position: string;
+  hire_date: string;
+  email?: string;
+  phone?: string;
+  is_active: boolean;
 }
 
 export interface TopPerformer extends Employee {

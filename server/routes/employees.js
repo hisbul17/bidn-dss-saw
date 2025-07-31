@@ -1,6 +1,6 @@
 import express from 'express';
 import { pool } from '../config/database.js';
-import { requireAuth, requireDepartmentAccess } from '../middleware/auth.js';
+import { requireAuth, requireDepartmentAccess, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -36,6 +36,74 @@ router.get('/', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Get employees error:', error);
     res.status(500).json({ error: 'Failed to fetch employees' });
+  }
+});
+
+// Create new employee
+router.post('/', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  try {
+    const { employee_code, full_name, department_id, position, hire_date, email, phone, is_active } = req.body;
+    
+    const [result] = await pool.execute(
+      'INSERT INTO employees (employee_code, full_name, department_id, position, hire_date, is_active) VALUES (?, ?, ?, ?, ?, ?)',
+      [employee_code, full_name, department_id, position, hire_date, is_active !== false]
+    );
+    
+    res.json({ message: 'Employee created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create employee error:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'Employee code already exists' });
+    } else {
+      res.status(500).json({ error: 'Failed to create employee' });
+    }
+  }
+});
+
+// Update employee
+router.put('/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { employee_code, full_name, department_id, position, hire_date, email, phone, is_active } = req.body;
+    
+    const [result] = await pool.execute(
+      'UPDATE employees SET employee_code = ?, full_name = ?, department_id = ?, position = ?, hire_date = ?, is_active = ? WHERE id = ?',
+      [employee_code, full_name, department_id, position, hire_date, is_active !== false, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    
+    res.json({ message: 'Employee updated successfully' });
+  } catch (error) {
+    console.error('Update employee error:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'Employee code already exists' });
+    } else {
+      res.status(500).json({ error: 'Failed to update employee' });
+    }
+  }
+});
+
+// Delete employee (soft delete)
+router.delete('/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [result] = await pool.execute(
+      'UPDATE employees SET is_active = FALSE WHERE id = ?',
+      [id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    
+    res.json({ message: 'Employee deleted successfully' });
+  } catch (error) {
+    console.error('Delete employee error:', error);
+    res.status(500).json({ error: 'Failed to delete employee' });
   }
 });
 
