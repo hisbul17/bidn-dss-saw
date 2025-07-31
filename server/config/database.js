@@ -10,7 +10,10 @@ const dbConfig = {
   database: process.env.DB_NAME || 'employee_dss',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  decimalNumbers: true,
+  supportBigNumbers: true,
+  bigNumberStrings: false
 };
 
 export const pool = mysql.createPool(dbConfig);
