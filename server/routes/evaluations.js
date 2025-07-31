@@ -151,9 +151,10 @@ router.post('/submit', requireAuth, requireRole(['manager', 'supervisor', 'admin
       }
     }
     
+    let connection;
     try {
       // Start transaction
-      const connection = await pool.getConnection();
+      connection = await pool.getConnection();
       await connection.beginTransaction();
       
       // Delete existing evaluations for this employee/period/evaluator
@@ -178,14 +179,16 @@ router.post('/submit', requireAuth, requireRole(['manager', 'supervisor', 'admin
       await recalculateEmployeeScore(connection, employeeId, periodId);
       
       await connection.commit();
-      connection.release();
       res.json({ message: 'Evaluation submitted successfully' });
     } catch (error) {
       if (connection) {
         await connection.rollback();
-        connection.release();
       }
       throw error;
+    } finally {
+      if (connection) {
+        connection.release();
+      }
     }
   } catch (error) {
     console.error('Submit evaluation error:', error);
