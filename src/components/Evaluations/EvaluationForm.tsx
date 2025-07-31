@@ -60,10 +60,10 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ employee, onBack, onSav
       
       // Pre-fill form with existing evaluations
       const evalMap: { [key: number]: { score: number; comments: string } } = {};
-      data.forEach((eval: Evaluation) => {
-        evalMap[eval.criteria_id] = {
-          score: eval.score,
-          comments: eval.comments || ''
+      data.forEach((evaluation: Evaluation) => {
+        evalMap[evaluation.criteria_id] = {
+          score: evaluation.score,
+          comments: evaluation.comments || ''
         };
       });
       setEvaluations(evalMap);
