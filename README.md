@@ -90,6 +90,7 @@ EXIT;
 # Import schema and seed data
 mysql -u dss_user -p employee_dss < server/database/schema.sql
 mysql -u dss_user -p employee_dss < server/database/seed.sql
+mysql -u dss_user -p employee_dss < server/database/enhanced_schema.sql
 ```
 
 ### 3. Backend Setup
